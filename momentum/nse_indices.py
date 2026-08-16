@@ -41,17 +41,40 @@ _HEADERS = {
 }
 
 
+def _symbols_from_table(table: pd.DataFrame) -> list:
+    """Extract yfinance-style (.NS-suffixed) tickers from an NSE constituent CSV's 'Symbol' column."""
+    if "Symbol" not in table.columns:
+        return []
+    symbols = table["Symbol"].dropna().astype(str).str.strip()
+    return sorted(f"{symbol}.NS" for symbol in symbols if symbol)
+
+
+def parse_constituent_csv(file_obj) -> list:
+    """Parse a user-uploaded NSE index constituent CSV (e.g. downloaded from NSE's own site,
+    where it isn't blocked) into yfinance-style tickers. Returns [] if the format is unrecognized."""
+    try:
+        table = pd.read_csv(file_obj)
+    except Exception:
+        return []
+    return _symbols_from_table(table)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def fetch_nifty_constituents(index_name: str) -> tuple:
     """
     Fetch current constituent tickers for a Nifty index, as yfinance-style
-    symbols (NSE symbol + ".NS" suffix).
+    symbols (NSE symbol + ".NS" suffix), directly from NSE's archive.
 
     Returns (tickers, error_message). `tickers` is [] on failure, in which
     case `error_message` describes the last failure across every mirror
     tried, so callers can surface something more useful than "it didn't
     work" — and so failures are visible in the deployed app's logs instead
     of being swallowed.
+
+    Note: NSE's WAF blocks requests from most cloud/datacenter IP ranges
+    (including Streamlit Community Cloud), regardless of headers or cookies.
+    When this fails for that reason, the caller should offer a manual
+    upload path (see parse_constituent_csv) rather than retrying.
     """
     urls = NSE_INDEX_CSV_URLS.get(index_name, [])
     last_error = "No source URLs configured for this index."
@@ -71,17 +94,11 @@ def fetch_nifty_constituents(index_name: str) -> tuple:
             logger.warning("Nifty constituent fetch failed: %s", last_error)
             continue
 
-        if "Symbol" not in table.columns:
-            last_error = f"{url} -> unexpected response format (columns: {list(table.columns)[:5]})"
-            logger.warning("Nifty constituent fetch failed: %s", last_error)
-            continue
-
-        symbols = table["Symbol"].dropna().astype(str).str.strip()
-        tickers = sorted(f"{symbol}.NS" for symbol in symbols if symbol)
+        tickers = _symbols_from_table(table)
         if tickers:
             return tickers, ""
 
-        last_error = f"{url} -> parsed response but found no symbols"
+        last_error = f"{url} -> parsed response but found no usable 'Symbol' column"
         logger.warning("Nifty constituent fetch failed: %s", last_error)
 
     return [], last_error

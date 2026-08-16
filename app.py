@@ -81,13 +81,29 @@ def main():
         elif is_nse_universe:
             with st.spinner(f"Fetching current {universe_source} constituents from NSE..."):
                 universe, fetch_error = nse_indices.fetch_nifty_constituents(universe_source)
+
             if not universe:
-                st.error(
-                    f"Couldn't fetch the {universe_source} constituent list from NSE right now. "
-                    "Falling back to the default watchlist universe."
-                )
+                st.error(f"Couldn't fetch the {universe_source} constituent list from NSE right now.")
                 st.caption(f"Details: {fetch_error}")
-                universe = data.DEFAULT_UNIVERSE
+                st.caption(
+                    "NSE often blocks requests from cloud servers (like the one this app runs on), "
+                    "even though it works fine from a regular browser. Workaround: open the CSV link "
+                    "below yourself, save it, then upload it here."
+                )
+                for url in nse_indices.NSE_INDEX_CSV_URLS.get(universe_source, []):
+                    st.caption(f"→ {url}")
+
+                uploaded = st.file_uploader(f"Upload {universe_source} constituent CSV", type="csv")
+                if uploaded is not None:
+                    universe = nse_indices.parse_constituent_csv(uploaded)
+                    if universe:
+                        st.success(f"Loaded {len(universe)} tickers from the uploaded file.")
+                    else:
+                        st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
+
+                if not universe:
+                    universe = data.DEFAULT_UNIVERSE
+                    st.caption("Using the default watchlist universe until a valid list is provided.")
             else:
                 st.caption(f"{len(universe)} {universe_source} constituents loaded.")
         else:
