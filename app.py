@@ -9,6 +9,7 @@ from plotly.subplots import make_subplots
 from momentum import backtest as bt
 from momentum import data
 from momentum import indicators as ind
+from momentum import nse_indices
 from momentum import screener
 from momentum import watchlist as wl
 
@@ -66,19 +67,40 @@ def main():
 
     with st.sidebar:
         st.header("Universe")
-        universe_source = st.radio("Ticker universe", ["Default watchlist universe", "Custom list"], index=0)
+        universe_source = st.radio(
+            "Ticker universe",
+            ["Default watchlist universe", "Nifty 200", "Nifty 500", "Custom list"],
+            index=0,
+        )
+
+        is_nse_universe = universe_source in ("Nifty 200", "Nifty 500")
+
         if universe_source == "Custom list":
             raw = st.text_area("Tickers (comma or newline separated)", value=", ".join(data.DEFAULT_UNIVERSE))
             universe = _parse_tickers(raw)
+        elif is_nse_universe:
+            with st.spinner(f"Fetching current {universe_source} constituents from NSE..."):
+                universe = nse_indices.fetch_nifty_constituents(universe_source)
+            if not universe:
+                st.error(
+                    f"Couldn't fetch the {universe_source} constituent list from NSE right now "
+                    "(the live feed may be unreachable or temporarily blocking requests). "
+                    "Falling back to the default watchlist universe."
+                )
+                universe = data.DEFAULT_UNIVERSE
+            else:
+                st.caption(f"{len(universe)} {universe_source} constituents loaded.")
         else:
             universe = data.DEFAULT_UNIVERSE
 
         period = st.selectbox("History window", ["6mo", "1y", "2y"], index=1)
-        benchmark_ticker = st.text_input("Benchmark", value=data.BENCHMARK_TICKER)
+        default_benchmark = nse_indices.NSE_BENCHMARK_TICKER if is_nse_universe else data.BENCHMARK_TICKER
+        benchmark_ticker = st.text_input("Benchmark", value=default_benchmark)
 
         st.divider()
         st.header("Screener filters")
-        min_price = st.number_input("Min price ($)", value=5.0, min_value=0.0, step=1.0)
+        price_currency = "₹" if is_nse_universe else "$"
+        min_price = st.number_input(f"Min price ({price_currency})", value=5.0, min_value=0.0, step=1.0)
         min_avg_volume = st.number_input("Min avg volume (20d)", value=200_000, min_value=0, step=50_000)
         rsi_range = st.slider("RSI (14) range", 0, 100, (40, 85))
         require_uptrend = st.checkbox("Require price above 50/200 SMA uptrend", value=True)

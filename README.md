@@ -6,7 +6,8 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
 
 - **Screener** — ranks a ticker universe by a composite momentum score (weighted 1/3/6/12-month
   rate of change), with filters for price, average volume, RSI range, and trend (price above
-  50/200-day SMA).
+  50/200-day SMA). Universe options: a default 40-stock US watchlist, live-fetched **Nifty 200**
+  or **Nifty 500** constituents (via NSE's public index archive), or a custom ticker list.
 - **Watchlist** — save candidates from the screener and track their latest momentum stats;
   persisted locally to `data/watchlist.json`.
 - **Stock Detail** — candlestick chart with 50/200-day SMAs, RSI(14), and MACD for any ticker.
@@ -33,12 +34,20 @@ streamlit run app.py
 ```
 app.py                  Streamlit UI (tabs: Screener, Watchlist, Stock Detail, Backtest)
 momentum/
-  data.py               Price data fetching (yfinance, cached)
+  data.py               Price data fetching (yfinance, cached, batched for large universes)
+  nse_indices.py        Live Nifty 200 / Nifty 500 constituent list fetching (NSE archive)
   indicators.py         SMA/EMA/RSI/MACD/ROC/ATR/relative strength helpers
   screener.py            Momentum scoring and universe screening
   watchlist.py           JSON-backed watchlist persistence
   backtest.py             Top-N momentum rotation backtest engine
 ```
+
+## Note on the Nifty 200 / Nifty 500 universes
+
+Index constituents are fetched live from NSE on each cache refresh (once per day) rather than
+hardcoded, since NSE rebalances these indices periodically. If NSE's archive is unreachable or
+blocking the request, the screener falls back to the default watchlist universe and shows a
+warning — it will not silently use a stale or partial list.
 
 ## Disclaimer
 
