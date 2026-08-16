@@ -16,9 +16,14 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
   crossover points.
 - **Stock Detail** — candlestick chart with 50/200-day SMAs, RSI(14), MACD, and crossover markers
   for any ticker, plus its current Signal/Momentum Score/Vs Benchmark badge.
-- **Backtest** — simulates an equal-weight, top-N momentum rotation strategy rebalanced on a
-  fixed schedule, plotted against a buy-and-hold benchmark, with CAGR / volatility / Sharpe /
-  max drawdown stats.
+- **Backtest** — simulates an equal-weight, top-N momentum rotation strategy across the whole
+  universe, rebalanced on a fixed schedule, plotted against a buy-and-hold benchmark, with CAGR /
+  volatility / Sharpe / max drawdown stats.
+- **Trade Simulator** — walks the Buy/Sell signal day-by-day through a single stock's full price
+  history (not just the latest snapshot): enters with all available capital the session after a
+  Buy/Strong Buy signal fires while flat, exits after a Sell/Strong Sell signal fires while
+  holding. Shows the resulting trade log, entry/exit markers on the price chart, and an equity
+  curve. This is signal-driven and single-stock, unlike the universe-wide rotation Backtest.
 
 ## Setup
 
@@ -37,7 +42,7 @@ streamlit run app.py
 ## Project structure
 
 ```
-app.py                  Streamlit UI (tabs: Screener, Watchlist, Stock Detail, Backtest)
+app.py                  Streamlit UI (tabs: Screener, Watchlist, Stock Detail, Backtest, Trade Simulator)
 momentum/
   data.py               Price data fetching (yfinance, cached, batched for large universes)
   nse_indices.py        Live Nifty 200 / Nifty 500 constituent list fetching (NSE archive)
@@ -45,7 +50,8 @@ momentum/
   signals.py             Strong Buy/Buy/Hold/Sell/Strong Sell signal rules and MACD crossover detection
   screener.py            Momentum scoring and universe screening
   watchlist.py           JSON-backed watchlist persistence
-  backtest.py             Top-N momentum rotation backtest engine
+  backtest.py             Top-N momentum rotation backtest engine (universe-wide rotation)
+  simulator.py            Single-stock, signal-driven trade simulator with trade log + equity curve
 ```
 
 ## Note on Signals

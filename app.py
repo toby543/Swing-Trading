@@ -12,6 +12,7 @@ from momentum import indicators as ind
 from momentum import nse_indices
 from momentum import screener
 from momentum import signals as sig
+from momentum import simulator as sim
 from momentum import watchlist as wl
 
 st.set_page_config(page_title="Momentum Swing Trading", page_icon="📈", layout="wide")
@@ -73,6 +74,35 @@ def render_chart(ticker: str, df: pd.DataFrame) -> go.Figure:
 
     fig.update_layout(height=750, xaxis_rangeslider_visible=False,
                        margin=dict(t=40, b=20, l=10, r=10), legend=dict(orientation="h"))
+    return fig
+
+
+def render_trade_markers_chart(ticker: str, df: pd.DataFrame, trades_df: pd.DataFrame) -> go.Figure:
+    """Candlestick chart with the simulator's entry/exit points marked."""
+    fig = go.Figure()
+    fig.add_trace(go.Candlestick(
+        x=df.index, open=df["Open"], high=df["High"], low=df["Low"], close=df["Close"],
+        name="Price", showlegend=False,
+    ))
+
+    entries = trades_df.dropna(subset=["Entry Date"])
+    if not entries.empty:
+        fig.add_trace(go.Scatter(
+            x=entries["Entry Date"], y=entries["Entry Price"] * 0.97, mode="markers", name="Entry",
+            marker=dict(symbol="triangle-up", size=12, color="#1a9850"),
+        ))
+
+    exits = trades_df.dropna(subset=["Exit Date"])
+    if not exits.empty:
+        fig.add_trace(go.Scatter(
+            x=exits["Exit Date"], y=exits["Exit Price"] * 1.03, mode="markers", name="Exit",
+            marker=dict(symbol="triangle-down", size=12, color="#d73027"),
+        ))
+
+    fig.update_layout(
+        title=f"{ticker} — Simulated Trades", height=500, xaxis_rangeslider_visible=False,
+        margin=dict(t=40, b=20, l=10, r=10), legend=dict(orientation="h"),
+    )
     return fig
 
 
@@ -148,8 +178,8 @@ def main():
         rsi_range = st.slider("RSI (14) range", 0, 100, (40, 85))
         require_uptrend = st.checkbox("Require price above 50/200 SMA uptrend", value=True)
 
-    tab_screener, tab_watchlist, tab_detail, tab_backtest = st.tabs(
-        ["🔍 Screener", "⭐ Watchlist", "📊 Stock Detail", "🧪 Backtest"]
+    tab_screener, tab_watchlist, tab_detail, tab_backtest, tab_simulator = st.tabs(
+        ["🔍 Screener", "⭐ Watchlist", "📊 Stock Detail", "🧪 Backtest", "🧾 Trade Simulator"]
     )
 
     with st.spinner("Loading price data..."):
@@ -304,6 +334,67 @@ def main():
                     with st.expander("Rebalance history"):
                         for entry in result["history"]:
                             st.write(f"**{entry['date'].date()}**: {', '.join(entry['holdings']) or '(cash)'}")
+
+    with tab_simulator:
+        st.subheader("Trade Simulator")
+        st.caption(
+            "Walks the Buy/Sell signal day-by-day through a single stock's history: enters with "
+            "all available capital the session after a Buy/Strong Buy signal fires while flat, "
+            "exits the session after a Sell/Strong Sell signal fires while holding — one position "
+            "at a time. A simplified simulation (no fees, slippage, or partial sizing), not "
+            "investment advice."
+        )
+
+        sim_tickers = sorted(set(list(price_data.keys()) + wl.load_watchlist()))
+        if not sim_tickers:
+            st.info("No tickers available yet.")
+        else:
+            sim_col1, sim_col2 = st.columns([3, 1])
+            sim_ticker = sim_col1.selectbox("Ticker", sim_tickers, key="sim_ticker")
+            sim_capital = sim_col2.number_input(
+                "Starting capital", value=100_000, min_value=1_000, step=1_000, key="sim_capital",
+            )
+
+            if st.button("▶️ Run simulation", type="primary"):
+                sim_df = price_data.get(sim_ticker)
+                if sim_df is None:
+                    sim_df = data.fetch_history(sim_ticker, period=period)
+
+                if sim_df is None or sim_df.empty or len(sim_df) < screener.MIN_HISTORY_DAYS:
+                    st.warning(f"Not enough price history for {sim_ticker} to simulate.")
+                    st.session_state.pop("sim_result", None)
+                else:
+                    with st.spinner("Simulating..."):
+                        st.session_state["sim_result"] = sim.simulate_trades(
+                            sim_df, benchmark_close, starting_capital=float(sim_capital),
+                        )
+                        st.session_state["sim_result_ticker"] = sim_ticker
+                        st.session_state["sim_result_df"] = sim_df
+
+            result = st.session_state.get("sim_result")
+            if result is not None and st.session_state.get("sim_result_ticker") == sim_ticker:
+                stats = result["stats"]
+                m1, m2, m3, m4 = st.columns(4)
+                m1.metric("Total Return", f"{stats['Total Return %']}%")
+                m2.metric("Win Rate", f"{stats['Win Rate %']}%" if pd.notna(stats["Win Rate %"]) else "—")
+                m3.metric("Closed Trades", stats["Closed Trades"])
+                m4.metric("Avg Holding Days", f"{stats['Avg Holding Days']}" if pd.notna(stats["Avg Holding Days"]) else "—")
+
+                trades_df = result["trades"]
+                sim_df = st.session_state["sim_result_df"]
+                st.plotly_chart(render_trade_markers_chart(sim_ticker, sim_df, trades_df), use_container_width=True)
+
+                equity_curve = result["equity_curve"]
+                if not equity_curve.empty:
+                    eq_fig = go.Figure()
+                    eq_fig.add_trace(go.Scatter(x=equity_curve.index, y=equity_curve["Equity"], name="Equity"))
+                    eq_fig.update_layout(height=300, margin=dict(t=20, b=20, l=10, r=10))
+                    st.plotly_chart(eq_fig, use_container_width=True)
+
+                if trades_df.empty:
+                    st.info("No Buy signal fired for this ticker over the selected history window — no trades to show.")
+                else:
+                    st.dataframe(trades_df, use_container_width=True, hide_index=True)
 
 
 if __name__ == "__main__":
