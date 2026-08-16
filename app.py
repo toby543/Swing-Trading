@@ -80,13 +80,13 @@ def main():
             universe = _parse_tickers(raw)
         elif is_nse_universe:
             with st.spinner(f"Fetching current {universe_source} constituents from NSE..."):
-                universe = nse_indices.fetch_nifty_constituents(universe_source)
+                universe, fetch_error = nse_indices.fetch_nifty_constituents(universe_source)
             if not universe:
                 st.error(
-                    f"Couldn't fetch the {universe_source} constituent list from NSE right now "
-                    "(the live feed may be unreachable or temporarily blocking requests). "
+                    f"Couldn't fetch the {universe_source} constituent list from NSE right now. "
                     "Falling back to the default watchlist universe."
                 )
+                st.caption(f"Details: {fetch_error}")
                 universe = data.DEFAULT_UNIVERSE
             else:
                 st.caption(f"{len(universe)} {universe_source} constituents loaded.")
