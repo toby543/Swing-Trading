@@ -1,13 +1,15 @@
-"""Rule-based Buy/Watch/Avoid signal classification and MACD crossover markers,
-built from the same indicators used elsewhere in the app."""
+"""Rule-based Strong Buy/Buy/Hold/Sell/Strong Sell signal classification and
+MACD crossover markers, built from the same indicators used elsewhere in the app."""
 
 import pandas as pd
 
 from momentum import indicators as ind
 
+STRONG_BUY = "🟢 Strong Buy"
 BUY = "🟢 Buy"
-WATCH = "🟡 Watch"
-AVOID = "🔴 Avoid"
+HOLD = "🟡 Hold"
+SELL = "🔴 Sell"
+STRONG_SELL = "🔴 Strong Sell"
 
 # RSI zone treated as "healthy" (bullish vote) vs. extended/weak (bearish vote).
 _RSI_BULLISH_RANGE = (45.0, 75.0)
@@ -32,20 +34,19 @@ def classify_signal(
 ) -> str:
     """
     Combine momentum score, relative strength, RSI zone, trend, and MACD
-    state into a single Buy/Watch/Avoid signal — a graded version of the
-    screener's shortlist heuristic, usable across the whole table rather
-    than as a pass/fail filter.
+    state into a Strong Buy / Buy / Hold / Sell / Strong Sell signal.
+
+    Momentum direction is the primary signal (this is a momentum strategy):
+    a stock with negative momentum is capped at Sell/Strong Sell regardless
+    of the other votes, and positive momentum is required to reach Buy or
+    Strong Buy. The other four factors act as a conviction score on top of
+    that direction — more agreement pushes toward the "Strong" tier.
     """
     if pd.isna(momentum_score):
-        return WATCH
+        return HOLD
 
-    bullish_votes = 0
-    bearish_votes = 0
-
-    if momentum_score > 0:
-        bullish_votes += 1
-    else:
-        bearish_votes += 1
+    bullish_votes = 1 if momentum_score > 0 else 0
+    bearish_votes = 1 if momentum_score <= 0 else 0
 
     if pd.notna(vs_benchmark):
         if vs_benchmark > 0:
@@ -69,11 +70,18 @@ def classify_signal(
     else:
         bearish_votes += 1
 
-    if momentum_score <= 0 or bearish_votes >= 3:
-        return AVOID
-    if bullish_votes >= 4:
+    net_score = bullish_votes - bearish_votes
+
+    if momentum_score <= 0:
+        return STRONG_SELL if net_score <= -3 else SELL
+
+    if net_score >= 4:
+        return STRONG_BUY
+    if net_score >= 1:
         return BUY
-    return WATCH
+    if net_score == 0:
+        return HOLD
+    return SELL
 
 
 def macd_crossovers(close: pd.Series) -> pd.DataFrame:
