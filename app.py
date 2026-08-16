@@ -93,15 +93,27 @@ def main():
                 for url in nse_indices.NSE_INDEX_CSV_URLS.get(universe_source, []):
                     st.caption(f"→ {url}")
 
-                uploaded = st.file_uploader(f"Upload {universe_source} constituent CSV", type="csv")
+                # Stash the parsed list in session_state, keyed per index — the
+                # file_uploader widget's own value doesn't reliably survive a
+                # rerun triggered by some *other* widget (e.g. clicking Shortlist
+                # or Add to watchlist), so we can't just re-read `uploaded` later.
+                session_key = f"uploaded_universe::{universe_source}"
+
+                uploaded = st.file_uploader(
+                    f"Upload {universe_source} constituent CSV", type="csv", key=f"uploader::{universe_source}",
+                )
                 if uploaded is not None:
-                    universe = nse_indices.parse_constituent_csv(uploaded)
-                    if universe:
-                        st.success(f"Loaded {len(universe)} tickers from the uploaded file.")
+                    parsed = nse_indices.parse_constituent_csv(uploaded)
+                    if parsed:
+                        st.session_state[session_key] = parsed
+                        st.success(f"Loaded {len(parsed)} tickers from the uploaded file — remembered for this session.")
                     else:
                         st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
 
-                if not universe:
+                universe = st.session_state.get(session_key, [])
+                if universe:
+                    st.caption(f"Using {len(universe)} previously uploaded {universe_source} tickers.")
+                else:
                     universe = data.DEFAULT_UNIVERSE
                     st.caption("Using the default watchlist universe until a valid list is provided.")
             else:
