@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 
 from momentum import indicators as ind
+from momentum import signals as sig
 
 # (lookback in trading days, weight in the composite score)
 MOMENTUM_LOOKBACKS = [(21, 0.15), (63, 0.35), (126, 0.30), (252, 0.20)]
@@ -11,7 +12,7 @@ MOMENTUM_LOOKBACKS = [(21, 0.15), (63, 0.35), (126, 0.30), (252, 0.20)]
 MIN_HISTORY_DAYS = 60
 
 
-def _momentum_score(close: pd.Series) -> float:
+def momentum_score(close: pd.Series) -> float:
     """Weighted average ROC across multiple lookback windows; NaN if not enough history."""
     weighted_sum = 0.0
     weight_used = 0.0
@@ -43,7 +44,7 @@ def screen_universe(
     """
     rows = []
 
-    bench_score = _momentum_score(benchmark_close) if benchmark_close is not None else np.nan
+    bench_score = momentum_score(benchmark_close) if benchmark_close is not None else np.nan
 
     for ticker, df in price_data.items():
         if len(df) < MIN_HISTORY_DAYS:
@@ -68,16 +69,19 @@ def screen_universe(
         if pd.notna(rsi_val) and not (rsi_min <= rsi_val <= rsi_max):
             continue
 
-        score = _momentum_score(close)
+        score = momentum_score(close)
         if pd.isna(score):
             continue
 
         rel_strength = score - bench_score if pd.notna(bench_score) else np.nan
         off_high = ind.percent_off_high(close, 252).iloc[-1]
         vol_surge = ind.volume_surge_ratio(volume, 20).iloc[-1]
+        macd_bullish = sig.macd_state(close)
+        signal = sig.classify_signal(score, rel_strength, rsi_val, uptrend, macd_bullish)
 
         rows.append({
             "Ticker": ticker,
+            "Signal": signal,
             "Price": round(last_price, 2),
             "Momentum Score": round(score, 2),
             "Vs Benchmark": round(rel_strength, 2) if pd.notna(rel_strength) else np.nan,
@@ -85,13 +89,14 @@ def screen_universe(
             "% Off 52w High": round(off_high, 2),
             "Volume Surge": round(vol_surge, 2) if pd.notna(vol_surge) else np.nan,
             "Above 50/200 SMA": uptrend,
+            "MACD Bullish": macd_bullish,
             "Avg Volume (20d)": int(avg_volume),
         })
 
     if not rows:
         return pd.DataFrame(columns=[
-            "Ticker", "Price", "Momentum Score", "Vs Benchmark", "RSI (14)",
-            "% Off 52w High", "Volume Surge", "Above 50/200 SMA", "Avg Volume (20d)",
+            "Ticker", "Signal", "Price", "Momentum Score", "Vs Benchmark", "RSI (14)",
+            "% Off 52w High", "Volume Surge", "Above 50/200 SMA", "MACD Bullish", "Avg Volume (20d)",
         ])
 
     result = pd.DataFrame(rows).sort_values("Momentum Score", ascending=False).reset_index(drop=True)

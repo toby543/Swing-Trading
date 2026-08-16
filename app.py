@@ -11,6 +11,7 @@ from momentum import data
 from momentum import indicators as ind
 from momentum import nse_indices
 from momentum import screener
+from momentum import signals as sig
 from momentum import watchlist as wl
 
 st.set_page_config(page_title="Momentum Swing Trading", page_icon="📈", layout="wide")
@@ -41,6 +42,20 @@ def render_chart(ticker: str, df: pd.DataFrame) -> go.Figure:
                               line=dict(width=1.3)), row=1, col=1)
     fig.add_trace(go.Scatter(x=df.index, y=ind.sma(close, 200), name="SMA 200",
                               line=dict(width=1.3)), row=1, col=1)
+
+    crossovers = sig.macd_crossovers(close)
+    bullish_pts = crossovers[crossovers["Type"] == "Bullish"]
+    bearish_pts = crossovers[crossovers["Type"] == "Bearish"]
+    if not bullish_pts.empty:
+        fig.add_trace(go.Scatter(
+            x=bullish_pts["Date"], y=bullish_pts["Price"] * 0.97, mode="markers", name="Bullish crossover",
+            marker=dict(symbol="triangle-up", size=10, color="#1a9850"),
+        ), row=1, col=1)
+    if not bearish_pts.empty:
+        fig.add_trace(go.Scatter(
+            x=bearish_pts["Date"], y=bearish_pts["Price"] * 1.03, mode="markers", name="Bearish crossover",
+            marker=dict(symbol="triangle-down", size=10, color="#d73027"),
+        ), row=1, col=1)
 
     rsi_series = ind.rsi(close, 14)
     fig.add_trace(go.Scatter(x=df.index, y=rsi_series, name="RSI", showlegend=False,
@@ -228,7 +243,28 @@ def main():
             if df is None or df.empty:
                 st.warning(f"No data for {chosen}.")
             else:
+                close = df["Close"]
+                score = screener.momentum_score(close)
+                bench_score = screener.momentum_score(benchmark_close) if benchmark_close is not None else float("nan")
+                rel_strength = score - bench_score if pd.notna(bench_score) else float("nan")
+                rsi_val = ind.rsi(close, 14).iloc[-1]
+                sma_50 = ind.sma(close, 50).iloc[-1]
+                sma_200 = ind.sma(close, 200).iloc[-1] if len(close) >= 200 else float("nan")
+                last_price = close.iloc[-1]
+                uptrend = bool(last_price > sma_50) and (pd.isna(sma_200) or sma_50 > sma_200 or last_price > sma_200)
+                macd_bullish = sig.macd_state(close)
+                current_signal = sig.classify_signal(score, rel_strength, rsi_val, uptrend, macd_bullish)
+
+                badge_col1, badge_col2, badge_col3 = st.columns(3)
+                badge_col1.metric("Signal", current_signal)
+                badge_col2.metric("Momentum Score", f"{score:.2f}" if pd.notna(score) else "—")
+                badge_col3.metric("Vs Benchmark", f"{rel_strength:.2f}" if pd.notna(rel_strength) else "—")
+
                 st.plotly_chart(render_chart(chosen, df), use_container_width=True)
+                st.caption(
+                    "Chart markers show historical MACD bullish (▲) / bearish (▼) crossovers — "
+                    "not investment advice, just where this rule-based signal would have flipped."
+                )
 
     with tab_backtest:
         st.subheader("Momentum Rotation Backtest")
