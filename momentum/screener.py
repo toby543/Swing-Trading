@@ -97,3 +97,41 @@ def screen_universe(
     result = pd.DataFrame(rows).sort_values("Momentum Score", ascending=False).reset_index(drop=True)
     result.insert(0, "Rank", np.arange(1, len(result) + 1))
     return result
+
+
+# Shortlist thresholds, applied on top of an already-screened table:
+#   - genuinely outperforming the benchmark, not just riding a broad rally
+#   - RSI in a "healthy" zone rather than already extended/overbought
+#   - near its 52-week high (breakout-style setup, not a deep recovery)
+#   - above-average recent volume, confirming the move is real
+#   - confirmed uptrend (price above 50/200 SMA)
+SHORTLIST_RSI_RANGE = (55.0, 70.0)
+SHORTLIST_MIN_VS_BENCHMARK = 0.0
+SHORTLIST_MAX_PCT_OFF_HIGH = -10.0
+SHORTLIST_MIN_VOLUME_SURGE = 1.0
+
+
+def shortlist_candidates(
+    results: pd.DataFrame,
+    rsi_range: tuple = SHORTLIST_RSI_RANGE,
+    min_vs_benchmark: float = SHORTLIST_MIN_VS_BENCHMARK,
+    max_pct_off_high: float = SHORTLIST_MAX_PCT_OFF_HIGH,
+    min_volume_surge: float = SHORTLIST_MIN_VOLUME_SURGE,
+) -> pd.DataFrame:
+    """
+    Apply a stricter secondary filter to already-screened results, keeping
+    only the strongest, healthiest-looking setups rather than everything
+    that merely passed the base screener filters. Rows missing a required
+    metric (e.g. no benchmark data) are excluded rather than let through.
+    """
+    if results.empty:
+        return results
+
+    mask = (
+        (results["Vs Benchmark"].fillna(-np.inf) >= min_vs_benchmark)
+        & results["RSI (14)"].between(rsi_range[0], rsi_range[1])
+        & (results["% Off 52w High"] >= max_pct_off_high)
+        & (results["Volume Surge"].fillna(0) >= min_volume_surge)
+        & (results["Above 50/200 SMA"])
+    )
+    return results[mask].reset_index(drop=True)

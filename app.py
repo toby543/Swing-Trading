@@ -152,6 +152,27 @@ def main():
                     wl.add_ticker(pick)
                     st.success(f"Added {pick} to watchlist.")
 
+                st.divider()
+                st.caption(
+                    "**Shortlist** keeps only the strongest, healthiest-looking setups: outperforming "
+                    "the benchmark, RSI in a non-overbought 55–70 zone, within 10% of the 52-week high, "
+                    "above-average volume, and a confirmed 50/200 SMA uptrend."
+                )
+                if st.button("🎯 Shortlist strongest setups"):
+                    st.session_state["shortlist_df"] = screener.shortlist_candidates(results)
+
+                shortlist_df = st.session_state.get("shortlist_df")
+                if shortlist_df is not None:
+                    if shortlist_df.empty:
+                        st.info("No candidates currently meet all the shortlist criteria.")
+                    else:
+                        st.write(f"{len(shortlist_df)} shortlisted.")
+                        st.dataframe(shortlist_df, use_container_width=True, hide_index=True)
+                        if st.button("➕ Add all shortlisted to watchlist"):
+                            for ticker in shortlist_df["Ticker"]:
+                                wl.add_ticker(ticker)
+                            st.success(f"Added {len(shortlist_df)} tickers to your watchlist.")
+
     with tab_watchlist:
         st.subheader("Watchlist")
         current = wl.load_watchlist()
