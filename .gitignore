@@ -6,3 +6,4 @@ venv/
 .DS_Store
 data/watchlist.json
 data/uploaded_*.json
+data/paper_portfolio.json

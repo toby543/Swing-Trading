@@ -10,6 +10,7 @@ from momentum import backtest as bt
 from momentum import data
 from momentum import indicators as ind
 from momentum import nse_indices
+from momentum import paper_trading as pt
 from momentum import screener
 from momentum import signals as sig
 from momentum import simulator as sim
@@ -359,7 +360,7 @@ def main():
                             st.write(f"**{entry['date'].date()}**: {', '.join(entry['holdings']) or '(cash)'}")
 
     with tab_simulator:
-        st.subheader("Trade Simulator")
+        st.subheader("🤖 Automated Signal Simulation")
         st.caption(
             "Walks the Buy/Sell signal day-by-day through a single stock's history: enters with "
             "all available capital the session after a Buy/Strong Buy signal fires while flat, "
@@ -418,6 +419,99 @@ def main():
                     st.info("No Buy signal fired for this ticker over the selected history window — no trades to show.")
                 else:
                     st.dataframe(trades_df, use_container_width=True, hide_index=True)
+
+        st.divider()
+        st.subheader("🖐️ Manual Paper Trading")
+        st.caption(
+            "Buy and sell any ticker yourself against a simulated cash balance, at its latest "
+            "available price. Weighted-average cost basis; persisted to disk so it survives page "
+            "refreshes (not a full app redeploy, same as the watchlist)."
+        )
+
+        portfolio = pt.load_portfolio()
+
+        reset_col1, reset_col2 = st.columns([3, 1])
+        new_capital = reset_col1.number_input(
+            "Starting capital", value=float(portfolio["starting_capital"]),
+            min_value=1_000.0, step=1_000.0, key="pt_new_capital",
+        )
+        if reset_col2.button("🔄 Reset portfolio", use_container_width=True):
+            portfolio = pt.reset_portfolio(float(new_capital))
+            st.success(f"Portfolio reset with {new_capital:,.2f} starting capital.")
+            st.rerun()
+
+        # Price lookup for mark-to-market: the currently loaded universe,
+        # plus a fetch for any held ticker that falls outside it (e.g. the
+        # universe selection changed since the position was opened).
+        price_lookup = {t: df["Close"].iloc[-1] for t, df in price_data.items() if not df.empty}
+        held_tickers = list(portfolio["positions"].keys())
+        missing_price_tickers = [t for t in held_tickers if t not in price_lookup]
+        if missing_price_tickers:
+            fetched = data.fetch_many(tuple(missing_price_tickers), period=period)
+            price_lookup.update({t: df["Close"].iloc[-1] for t, df in fetched.items() if not df.empty})
+
+        pt_summary = pt.summary(portfolio, price_lookup)
+        pm1, pm2, pm3, pm4 = st.columns(4)
+        pm1.metric("Cash", f"{pt_summary['cash']:,.2f}")
+        pm2.metric("Holdings Value", f"{pt_summary['holdings_value']:,.2f}")
+        pm3.metric("Total Equity", f"{pt_summary['total_equity']:,.2f}")
+        pm4.metric(
+            "Total Return",
+            f"{pt_summary['total_return_pct']:.2f}%" if pd.notna(pt_summary["total_return_pct"]) else "—",
+        )
+
+        trade_tickers = sorted(set(list(price_data.keys()) + wl.load_watchlist() + held_tickers))
+        if not trade_tickers:
+            st.info("No tickers available to trade yet.")
+        else:
+            buy_col, sell_col = st.columns(2)
+
+            with buy_col:
+                st.markdown("**Buy**")
+                buy_ticker = st.selectbox("Ticker to buy", trade_tickers, key="pt_buy_ticker")
+                buy_price = price_lookup.get(buy_ticker)
+                st.caption(f"Last price: {buy_price:,.2f}" if buy_price else "Price unavailable for this ticker.")
+                buy_amount = st.number_input(
+                    "Amount to invest", min_value=0.0, step=100.0,
+                    value=float(min(1000.0, portfolio["cash"])), key="pt_buy_amount",
+                )
+                if st.button("🟢 Buy", key="pt_buy_button", use_container_width=True):
+                    ok, msg = pt.buy(portfolio, buy_ticker, buy_price, float(buy_amount))
+                    (st.success if ok else st.error)(msg)
+                    if ok:
+                        st.rerun()
+
+            with sell_col:
+                st.markdown("**Sell**")
+                if not held_tickers:
+                    st.caption("No open positions to sell.")
+                else:
+                    sell_ticker = st.selectbox("Ticker to sell", held_tickers, key="pt_sell_ticker")
+                    sell_price = price_lookup.get(sell_ticker)
+                    shares_held = portfolio["positions"][sell_ticker]["shares"]
+                    st.caption(
+                        f"Last price: {sell_price:,.2f} · Held: {shares_held:.4f} shares"
+                        if sell_price else f"Held: {shares_held:.4f} shares (no live price)"
+                    )
+                    sell_shares = st.number_input(
+                        "Shares to sell", min_value=0.0, max_value=float(shares_held),
+                        value=float(shares_held), key="pt_sell_shares",
+                    )
+                    if st.button("🔴 Sell", key="pt_sell_button", use_container_width=True):
+                        ok, msg = pt.sell(portfolio, sell_ticker, sell_price, float(sell_shares))
+                        (st.success if ok else st.error)(msg)
+                        if ok:
+                            st.rerun()
+
+        if not pt_summary["holdings_df"].empty:
+            st.write("**Open Positions**")
+            st.dataframe(pt_summary["holdings_df"], use_container_width=True, hide_index=True)
+
+        if portfolio["trades"]:
+            st.write("**Trade Log**")
+            st.dataframe(
+                pd.DataFrame(portfolio["trades"]).iloc[::-1], use_container_width=True, hide_index=True,
+            )
 
 
 if __name__ == "__main__":
