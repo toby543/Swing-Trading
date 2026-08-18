@@ -6,13 +6,22 @@ against a stale universe.
 """
 
 import io
+import json
 import logging
+import os
 
 import pandas as pd
 import requests
 import streamlit as st
 
 logger = logging.getLogger(__name__)
+
+_DATA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data")
+
+
+def _uploaded_cache_path(index_name: str) -> str:
+    safe_name = index_name.lower().replace(" ", "_")
+    return os.path.join(_DATA_DIR, f"uploaded_{safe_name}.json")
 
 # NSE has served these archive CSVs from more than one hostname over time;
 # try each in order and fall through on failure.
@@ -57,6 +66,30 @@ def parse_constituent_csv(file_obj) -> list:
     except Exception:
         return []
     return _symbols_from_table(table)
+
+
+def save_uploaded_constituents(index_name: str, tickers: list) -> None:
+    """
+    Persist an uploaded constituent list to disk, keyed by index name, so it
+    survives page refreshes / new browser tabs / the app going idle and
+    reconnecting — st.session_state alone does not survive any of those,
+    only a live rerun within the same browser connection.
+    """
+    os.makedirs(_DATA_DIR, exist_ok=True)
+    with open(_uploaded_cache_path(index_name), "w") as f:
+        json.dump(tickers, f)
+
+
+def load_uploaded_constituents(index_name: str) -> list:
+    """Load a previously uploaded constituent list from disk, if one was saved."""
+    path = _uploaded_cache_path(index_name)
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return []
 
 
 @st.cache_data(ttl=86400, show_spinner=False)

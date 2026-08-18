@@ -66,8 +66,11 @@ as a faster way to scan the screener table, not a substitute for looking at the 
 
 Index constituents are fetched live from NSE on each cache refresh (once per day) rather than
 hardcoded, since NSE rebalances these indices periodically. If NSE's archive is unreachable or
-blocking the request, the screener falls back to the default watchlist universe and shows a
-warning — it will not silently use a stale or partial list.
+blocking the request (NSE commonly blocks cloud/datacenter IPs, including Streamlit Community
+Cloud's), the screener shows an upload box — download the CSV from NSE in your own browser and
+upload it there. The uploaded list is written to `data/uploaded_nifty_*.json` so it survives page
+refreshes and reconnects, same as the watchlist; it does not survive a full app redeploy on
+Streamlit Cloud, since that resets the filesystem.
 
 ## Disclaimer
 

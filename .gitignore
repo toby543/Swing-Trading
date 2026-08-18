@@ -5,3 +5,4 @@ venv/
 .streamlit/secrets.toml
 .DS_Store
 data/watchlist.json
+data/uploaded_*.json

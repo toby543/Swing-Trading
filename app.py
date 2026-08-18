@@ -138,26 +138,30 @@ def main():
                 for url in nse_indices.NSE_INDEX_CSV_URLS.get(universe_source, []):
                     st.caption(f"→ {url}")
 
-                # Stash the parsed list in session_state, keyed per index — the
-                # file_uploader widget's own value doesn't reliably survive a
-                # rerun triggered by some *other* widget (e.g. clicking Shortlist
-                # or Add to watchlist), so we can't just re-read `uploaded` later.
-                session_key = f"uploaded_universe::{universe_source}"
-
+                # Persist the parsed list to disk (data/uploaded_*.json), keyed
+                # per index — st.session_state alone does NOT survive a page
+                # refresh, a new browser tab, or the app reconnecting after
+                # going idle, so a purely in-memory stash gets silently lost
+                # in exactly those situations. Disk survives all of them for
+                # as long as this app instance keeps running (same as how the
+                # watchlist is persisted).
                 uploaded = st.file_uploader(
                     f"Upload {universe_source} constituent CSV", type="csv", key=f"uploader::{universe_source}",
                 )
                 if uploaded is not None:
                     parsed = nse_indices.parse_constituent_csv(uploaded)
                     if parsed:
-                        st.session_state[session_key] = parsed
-                        st.success(f"Loaded {len(parsed)} tickers from the uploaded file — remembered for this session.")
+                        nse_indices.save_uploaded_constituents(universe_source, parsed)
+                        st.success(f"Loaded {len(parsed)} tickers from the uploaded file — saved for future sessions.")
                     else:
                         st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
 
-                universe = st.session_state.get(session_key, [])
+                universe = nse_indices.load_uploaded_constituents(universe_source)
                 if universe:
                     st.caption(f"Using {len(universe)} previously uploaded {universe_source} tickers.")
+                    if st.button(f"Clear uploaded {universe_source} list", key=f"clear_upload::{universe_source}"):
+                        nse_indices.save_uploaded_constituents(universe_source, [])
+                        st.rerun()
                 else:
                     universe = data.DEFAULT_UNIVERSE
                     st.caption("Using the default watchlist universe until a valid list is provided.")
