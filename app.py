@@ -421,12 +421,29 @@ def main():
                 buy_signal_caption = _ticker_signal_caption(buy_ticker)
                 if buy_signal_caption:
                     st.caption(buy_signal_caption)
-                buy_amount = st.number_input(
-                    "Amount to invest", min_value=0.0, step=100.0,
-                    value=float(min(1000.0, portfolio["cash"])), key="pt_buy_amount",
+
+                buy_mode = st.radio(
+                    "Buy by", ["Amount ($)", "Quantity (shares)"], key="pt_buy_mode", horizontal=True,
                 )
+                if buy_mode == "Amount ($)":
+                    buy_amount = st.number_input(
+                        "Amount to invest", min_value=0.0, step=100.0,
+                        value=float(min(1000.0, portfolio["cash"])), key="pt_buy_amount",
+                    )
+                    if buy_price:
+                        st.caption(f"≈ {buy_amount / buy_price:.4f} shares")
+                else:
+                    buy_qty = st.number_input(
+                        "Shares to buy", min_value=0.0, step=1.0, value=1.0, key="pt_buy_qty",
+                    )
+                    if buy_price:
+                        st.caption(f"≈ {buy_qty * buy_price:,.2f} cost")
+
                 if st.button("🟢 Buy", key="pt_buy_button", use_container_width=True):
-                    ok, msg = pt.buy(portfolio, buy_ticker, buy_price, float(buy_amount))
+                    if buy_mode == "Amount ($)":
+                        ok, msg = pt.buy(portfolio, buy_ticker, buy_price, float(buy_amount))
+                    else:
+                        ok, msg = pt.buy_shares(portfolio, buy_ticker, buy_price, float(buy_qty))
                     (st.success if ok else st.error)(msg)
                     if ok:
                         pt.record_equity_snapshot(portfolio, price_lookup)

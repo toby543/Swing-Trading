@@ -78,6 +78,15 @@ def buy(portfolio: dict, ticker: str, price: float, amount: float) -> tuple:
     return True, f"Bought {shares_bought:.4f} shares of {ticker} at {price:.2f}."
 
 
+def buy_shares(portfolio: dict, ticker: str, price: float, shares: float) -> tuple:
+    """Buy an exact `shares` quantity of `ticker` at `price`. Returns (success, message)."""
+    if price is None or pd.isna(price) or price <= 0:
+        return False, f"No valid price available for {ticker}."
+    if shares <= 0:
+        return False, "Enter a positive number of shares to buy."
+    return buy(portfolio, ticker, price, shares * price)
+
+
 def sell(portfolio: dict, ticker: str, price: float, shares: float) -> tuple:
     """Sell `shares` of `ticker` at `price`. Returns (success, message)."""
     if price is None or pd.isna(price) or price <= 0:
