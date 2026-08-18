@@ -19,16 +19,11 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
 - **Backtest** — simulates an equal-weight, top-N momentum rotation strategy across the whole
   universe, rebalanced on a fixed schedule, plotted against a buy-and-hold benchmark, with CAGR /
   volatility / Sharpe / max drawdown stats.
-- **Trade Simulator** — two modes:
-  - *Automated Signal Simulation*: walks the Buy/Sell signal day-by-day through a single stock's
-    full price history, entering with all available capital the session after a Buy/Strong Buy
-    signal fires while flat, exiting after a Sell/Strong Sell signal fires while holding. Shows the
-    resulting trade log, entry/exit markers on the price chart, and an equity curve.
-  - *Manual Paper Trading*: click Buy/Sell yourself on any ticker against a simulated cash balance,
-    at its latest price, with weighted-average cost basis. Shows the current Buy/Sell signal next
-    to each ticker as a decision aid, an equity curve across your trades, realized P&L/win-rate
-    stats, an open-positions table, a trade log with CSV export, and a confirm-before-erasing
-    portfolio reset. Persisted to `data/paper_portfolio.json`.
+- **Trade Simulator** — manual paper trading: click Buy/Sell yourself on any ticker against a
+  simulated cash balance, at its latest price, with weighted-average cost basis. Shows the current
+  Buy/Sell signal next to each ticker as a decision aid, an equity curve across your trades,
+  realized P&L/win-rate stats, an open-positions table, a trade log with CSV export, and a
+  confirm-before-erasing portfolio reset. Persisted to `data/paper_portfolio.json`.
 
 ## Setup
 
@@ -56,7 +51,6 @@ momentum/
   screener.py            Momentum scoring and universe screening
   watchlist.py           JSON-backed watchlist persistence
   backtest.py             Top-N momentum rotation backtest engine (universe-wide rotation)
-  simulator.py            Single-stock, signal-driven trade simulator with trade log + equity curve
   paper_trading.py         Manual buy/sell paper-trading portfolio (weighted-avg cost basis)
 ```
 
