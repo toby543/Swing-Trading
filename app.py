@@ -124,10 +124,43 @@ def main():
             raw = st.text_area("Tickers (comma or newline separated)", value=", ".join(data.DEFAULT_UNIVERSE))
             universe = _parse_tickers(raw)
         elif is_nse_universe:
+            # Check the on-disk uploaded cache BEFORE showing anything about
+            # the live fetch. NSE reliably 403s Streamlit Cloud on every load
+            # (an IP-level block, not transient), so if we tried the live
+            # fetch first every time we'd show a scary red error on every
+            # single page load even after the user has already successfully
+            # uploaded a working list — which is exactly what was happening.
+            uploaded_cached = nse_indices.load_uploaded_constituents(universe_source)
+
             with st.spinner(f"Fetching current {universe_source} constituents from NSE..."):
                 universe, fetch_error = nse_indices.fetch_nifty_constituents(universe_source)
 
-            if not universe:
+            if universe:
+                st.caption(f"{len(universe)} {universe_source} constituents loaded live from NSE.")
+            elif uploaded_cached:
+                universe = uploaded_cached
+                st.caption(
+                    f"NSE's live feed is blocked from this server, but {len(universe)} previously "
+                    f"uploaded {universe_source} tickers are being used instead."
+                )
+                with st.expander("Re-upload a fresh list / live fetch details"):
+                    st.caption(f"Live fetch details: {fetch_error}")
+                    uploaded = st.file_uploader(
+                        f"Upload a fresh {universe_source} constituent CSV", type="csv",
+                        key=f"uploader::{universe_source}",
+                    )
+                    if uploaded is not None:
+                        parsed = nse_indices.parse_constituent_csv(uploaded)
+                        if parsed:
+                            nse_indices.save_uploaded_constituents(universe_source, parsed)
+                            universe = parsed
+                            st.success(f"Loaded {len(parsed)} tickers from the uploaded file — saved for future sessions.")
+                        else:
+                            st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
+                    if st.button(f"Clear uploaded {universe_source} list", key=f"clear_upload::{universe_source}"):
+                        nse_indices.save_uploaded_constituents(universe_source, [])
+                        st.rerun()
+            else:
                 st.error(f"Couldn't fetch the {universe_source} constituent list from NSE right now.")
                 st.caption(f"Details: {fetch_error}")
                 st.caption(
@@ -138,13 +171,9 @@ def main():
                 for url in nse_indices.NSE_INDEX_CSV_URLS.get(universe_source, []):
                     st.caption(f"→ {url}")
 
-                # Persist the parsed list to disk (data/uploaded_*.json), keyed
-                # per index — st.session_state alone does NOT survive a page
-                # refresh, a new browser tab, or the app reconnecting after
-                # going idle, so a purely in-memory stash gets silently lost
-                # in exactly those situations. Disk survives all of them for
-                # as long as this app instance keeps running (same as how the
-                # watchlist is persisted).
+                # Persisted to disk (data/uploaded_*.json), not st.session_state
+                # — session_state doesn't survive a page refresh, a new
+                # browser tab, or the app reconnecting after going idle.
                 uploaded = st.file_uploader(
                     f"Upload {universe_source} constituent CSV", type="csv", key=f"uploader::{universe_source}",
                 )
@@ -152,21 +181,14 @@ def main():
                     parsed = nse_indices.parse_constituent_csv(uploaded)
                     if parsed:
                         nse_indices.save_uploaded_constituents(universe_source, parsed)
+                        universe = parsed
                         st.success(f"Loaded {len(parsed)} tickers from the uploaded file — saved for future sessions.")
                     else:
                         st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
 
-                universe = nse_indices.load_uploaded_constituents(universe_source)
-                if universe:
-                    st.caption(f"Using {len(universe)} previously uploaded {universe_source} tickers.")
-                    if st.button(f"Clear uploaded {universe_source} list", key=f"clear_upload::{universe_source}"):
-                        nse_indices.save_uploaded_constituents(universe_source, [])
-                        st.rerun()
-                else:
+                if not universe:
                     universe = data.DEFAULT_UNIVERSE
                     st.caption("Using the default watchlist universe until a valid list is provided.")
-            else:
-                st.caption(f"{len(universe)} {universe_source} constituents loaded.")
         else:
             universe = data.DEFAULT_UNIVERSE
 
