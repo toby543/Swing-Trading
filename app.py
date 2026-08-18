@@ -431,14 +431,16 @@ def main():
                         "Amount to invest", min_value=0.0, step=100.0,
                         value=float(min(1000.0, portfolio["cash"])), key="pt_buy_amount",
                     )
+                    order_value = buy_amount
                     if buy_price:
                         st.caption(f"≈ {buy_amount / buy_price:.4f} shares")
                 else:
                     buy_qty = st.number_input(
                         "Shares to buy", min_value=0.0, step=1.0, value=1.0, key="pt_buy_qty",
                     )
-                    if buy_price:
-                        st.caption(f"≈ {buy_qty * buy_price:,.2f} cost")
+                    order_value = buy_qty * buy_price if buy_price else None
+
+                st.metric("Total Buy Value", f"{order_value:,.2f}" if order_value is not None else "—")
 
                 if st.button("🟢 Buy", key="pt_buy_button", use_container_width=True):
                     if buy_mode == "Amount ($)":
