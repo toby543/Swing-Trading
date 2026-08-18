@@ -1,15 +1,12 @@
 """Momentum Swing Trading — a Streamlit app for screening, tracking, and backtesting
 momentum-based swing trade candidates."""
 
-import html
-
 import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 from plotly.subplots import make_subplots
 
 from momentum import backtest as bt
-from momentum import breakout_watchlist as bw
 from momentum import data
 from momentum import indicators as ind
 from momentum import nse_indices
@@ -45,47 +42,6 @@ def compute_current_signal(df: pd.DataFrame, benchmark_close: pd.Series):
     macd_bullish = sig.macd_state(close)
     signal = sig.classify_signal(score, rel_strength, rsi_val, uptrend, macd_bullish)
     return signal, score, rel_strength
-
-
-def render_ticker_tape(breakout_df: pd.DataFrame) -> str:
-    """Builds a scrolling HTML/CSS ticker-tape banner for stocks nearing their 52-week high."""
-    items = []
-    for _, row in breakout_df.iterrows():
-        ticker = html.escape(str(row["Ticker"]))
-        pct_away = row["% Away From 52W High"]
-        rsi_val = row["RSI (14D)"]
-        items.append(
-            f'<span class="ticker-item"><b>{ticker}</b> ₹{row["Close Price"]:,.2f} '
-            f'<span class="ticker-pct">{pct_away:.1f}% from 52W high</span>'
-            f'{f" · RSI {rsi_val:.0f}" if pd.notna(rsi_val) else ""}</span>'
-        )
-    # Duplicated once so the CSS animation (translateX 0 -> -50%) loops seamlessly.
-    content = "".join(items) * 2
-
-    return f"""
-    <div class="ticker-wrap">
-      <div class="ticker-move">{content}</div>
-    </div>
-    <style>
-    .ticker-wrap {{
-        width: 100%; overflow: hidden; background: #0e1117; border-radius: 6px;
-        padding: 10px 0; margin-bottom: 14px; border: 1px solid #30333a;
-    }}
-    .ticker-move {{
-        display: inline-block; white-space: nowrap; animation: ticker-scroll 50s linear infinite;
-    }}
-    .ticker-wrap:hover .ticker-move {{ animation-play-state: paused; }}
-    .ticker-item {{
-        display: inline-block; padding: 0 28px; color: #e6e6e6;
-        font-family: 'Courier New', monospace; font-size: 0.95rem;
-    }}
-    .ticker-pct {{ color: #3ecf5e; font-weight: 600; }}
-    @keyframes ticker-scroll {{
-        0% {{ transform: translateX(0); }}
-        100% {{ transform: translateX(-50%); }}
-    }}
-    </style>
-    """
 
 
 def render_chart(ticker: str, df: pd.DataFrame) -> go.Figure:
@@ -170,14 +126,6 @@ def render_trade_markers_chart(ticker: str, df: pd.DataFrame, trades_df: pd.Data
 def main():
     st.title("📈 Momentum Swing Trading")
     st.caption("Screen for momentum leaders, track a watchlist, inspect charts, and backtest a rotation strategy.")
-
-    breakout_df = bw.load_breakout_watchlist()
-    if not breakout_df.empty:
-        st.markdown(render_ticker_tape(breakout_df), unsafe_allow_html=True)
-        st.caption(
-            f"Nearing breakout: {len(breakout_df)} stocks within a few % of their 52-week high, "
-            f"as of {bw.BREAKOUT_WATCHLIST_DATE}. Hover to pause."
-        )
 
     with st.sidebar:
         st.header("Universe")
