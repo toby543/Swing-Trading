@@ -20,6 +20,7 @@ def _new_portfolio(starting_capital: float) -> dict:
         "cash": starting_capital,
         "positions": {},  # ticker -> {"shares": float, "avg_price": float}
         "trades": [],  # {"date", "ticker", "action", "shares", "price", "value", "realized_pl"}
+        "equity_history": [],  # {"date", "equity"} — one point per trade, so a curve is visible over time
     }
 
 
@@ -33,6 +34,7 @@ def load_portfolio() -> dict:
         return _new_portfolio(DEFAULT_STARTING_CAPITAL)
     portfolio.setdefault("positions", {})
     portfolio.setdefault("trades", [])
+    portfolio.setdefault("equity_history", [])
     return portfolio
 
 
@@ -104,6 +106,31 @@ def sell(portfolio: dict, ticker: str, price: float, shares: float) -> tuple:
     })
     save_portfolio(portfolio)
     return True, f"Sold {shares:.4f} shares of {ticker} at {price:.2f} (realized P&L: {realized_pl:+.2f})."
+
+
+def record_equity_snapshot(portfolio: dict, price_lookup: dict) -> None:
+    """
+    Append the portfolio's current total equity to its history and save.
+    Call this after every buy/sell (with the same price_lookup used for the
+    trade) so a curve of equity over time becomes visible, rather than only
+    ever showing the current snapshot.
+    """
+    total_equity = summary(portfolio, price_lookup)["total_equity"]
+    portfolio["equity_history"].append({"date": str(date.today()), "equity": round(total_equity, 2)})
+    save_portfolio(portfolio)
+
+
+def realized_pl_stats(portfolio: dict) -> dict:
+    """Win rate and total realized P&L across closed (SELL) trades."""
+    sells = [t for t in portfolio["trades"] if t["action"] == "SELL" and t.get("realized_pl") is not None]
+    if not sells:
+        return {"total_realized_pl": 0.0, "num_closed": 0, "win_rate_pct": np.nan}
+    wins = [t for t in sells if t["realized_pl"] > 0]
+    return {
+        "total_realized_pl": round(sum(t["realized_pl"] for t in sells), 2),
+        "num_closed": len(sells),
+        "win_rate_pct": round(len(wins) / len(sells) * 100, 1),
+    }
 
 
 def summary(portfolio: dict, price_lookup: dict) -> dict:

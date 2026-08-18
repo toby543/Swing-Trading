@@ -28,6 +28,22 @@ def _parse_tickers(raw: str) -> list:
     return [t.strip().upper() for t in raw.replace("\n", ",").split(",") if t.strip()]
 
 
+def compute_current_signal(df: pd.DataFrame, benchmark_close: pd.Series):
+    """Returns (signal_label, momentum_score, vs_benchmark) for a ticker's latest bar."""
+    close = df["Close"]
+    score = screener.momentum_score(close)
+    bench_score = screener.momentum_score(benchmark_close) if benchmark_close is not None else float("nan")
+    rel_strength = score - bench_score if pd.notna(bench_score) else float("nan")
+    rsi_val = ind.rsi(close, 14).iloc[-1]
+    sma_50 = ind.sma(close, 50).iloc[-1]
+    sma_200 = ind.sma(close, 200).iloc[-1] if len(close) >= 200 else float("nan")
+    last_price = close.iloc[-1]
+    uptrend = bool(last_price > sma_50) and (pd.isna(sma_200) or sma_50 > sma_200 or last_price > sma_200)
+    macd_bullish = sig.macd_state(close)
+    signal = sig.classify_signal(score, rel_strength, rsi_val, uptrend, macd_bullish)
+    return signal, score, rel_strength
+
+
 def render_chart(ticker: str, df: pd.DataFrame) -> go.Figure:
     close = df["Close"]
     fig = make_subplots(
@@ -297,17 +313,7 @@ def main():
             if df is None or df.empty:
                 st.warning(f"No data for {chosen}.")
             else:
-                close = df["Close"]
-                score = screener.momentum_score(close)
-                bench_score = screener.momentum_score(benchmark_close) if benchmark_close is not None else float("nan")
-                rel_strength = score - bench_score if pd.notna(bench_score) else float("nan")
-                rsi_val = ind.rsi(close, 14).iloc[-1]
-                sma_50 = ind.sma(close, 50).iloc[-1]
-                sma_200 = ind.sma(close, 200).iloc[-1] if len(close) >= 200 else float("nan")
-                last_price = close.iloc[-1]
-                uptrend = bool(last_price > sma_50) and (pd.isna(sma_200) or sma_50 > sma_200 or last_price > sma_200)
-                macd_bullish = sig.macd_state(close)
-                current_signal = sig.classify_signal(score, rel_strength, rsi_val, uptrend, macd_bullish)
+                current_signal, score, rel_strength = compute_current_signal(df, benchmark_close)
 
                 badge_col1, badge_col2, badge_col3 = st.columns(3)
                 badge_col1.metric("Signal", current_signal)
@@ -430,15 +436,19 @@ def main():
 
         portfolio = pt.load_portfolio()
 
-        reset_col1, reset_col2 = st.columns([3, 1])
-        new_capital = reset_col1.number_input(
-            "Starting capital", value=float(portfolio["starting_capital"]),
-            min_value=1_000.0, step=1_000.0, key="pt_new_capital",
-        )
-        if reset_col2.button("🔄 Reset portfolio", use_container_width=True):
-            portfolio = pt.reset_portfolio(float(new_capital))
-            st.success(f"Portfolio reset with {new_capital:,.2f} starting capital.")
-            st.rerun()
+        with st.expander("Reset portfolio (erases all trade history)"):
+            new_capital = st.number_input(
+                "Starting capital", value=float(portfolio["starting_capital"]),
+                min_value=1_000.0, step=1_000.0, key="pt_new_capital",
+            )
+            confirm_reset = st.checkbox(
+                "I understand this permanently erases the current trade log and equity history.",
+                key="pt_confirm_reset",
+            )
+            if st.button("🔄 Reset portfolio", disabled=not confirm_reset):
+                portfolio = pt.reset_portfolio(float(new_capital))
+                st.success(f"Portfolio reset with {new_capital:,.2f} starting capital.")
+                st.rerun()
 
         # Price lookup for mark-to-market: the currently loaded universe,
         # plus a fetch for any held ticker that falls outside it (e.g. the
@@ -451,6 +461,8 @@ def main():
             price_lookup.update({t: df["Close"].iloc[-1] for t, df in fetched.items() if not df.empty})
 
         pt_summary = pt.summary(portfolio, price_lookup)
+        pl_stats = pt.realized_pl_stats(portfolio)
+
         pm1, pm2, pm3, pm4 = st.columns(4)
         pm1.metric("Cash", f"{pt_summary['cash']:,.2f}")
         pm2.metric("Holdings Value", f"{pt_summary['holdings_value']:,.2f}")
@@ -459,6 +471,32 @@ def main():
             "Total Return",
             f"{pt_summary['total_return_pct']:.2f}%" if pd.notna(pt_summary["total_return_pct"]) else "—",
         )
+        pm5, pm6, pm7 = st.columns(3)
+        pm5.metric("Realized P&L", f"{pl_stats['total_realized_pl']:+,.2f}")
+        pm6.metric("Closed Trades", pl_stats["num_closed"])
+        pm7.metric("Win Rate", f"{pl_stats['win_rate_pct']}%" if pd.notna(pl_stats["win_rate_pct"]) else "—")
+
+        equity_history = portfolio["equity_history"]
+        if len(equity_history) >= 2:
+            eq_df = pd.DataFrame(equity_history)
+            pt_eq_fig = go.Figure()
+            pt_eq_fig.add_trace(go.Scatter(
+                x=list(range(len(eq_df))), y=eq_df["equity"], mode="lines+markers", name="Equity",
+            ))
+            pt_eq_fig.update_layout(
+                height=250, margin=dict(t=20, b=20, l=10, r=10),
+                xaxis_title="Trade #", yaxis_title="Total Equity",
+            )
+            st.plotly_chart(pt_eq_fig, use_container_width=True)
+
+        def _ticker_signal_caption(ticker: str) -> str:
+            df = price_data.get(ticker)
+            if df is None:
+                df = data.fetch_history(ticker, period=period)
+            if df is None or df.empty or len(df) < screener.MIN_HISTORY_DAYS:
+                return ""
+            signal_label, _, _ = compute_current_signal(df, benchmark_close)
+            return f"Current signal: {signal_label}"
 
         trade_tickers = sorted(set(list(price_data.keys()) + wl.load_watchlist() + held_tickers))
         if not trade_tickers:
@@ -471,6 +509,9 @@ def main():
                 buy_ticker = st.selectbox("Ticker to buy", trade_tickers, key="pt_buy_ticker")
                 buy_price = price_lookup.get(buy_ticker)
                 st.caption(f"Last price: {buy_price:,.2f}" if buy_price else "Price unavailable for this ticker.")
+                buy_signal_caption = _ticker_signal_caption(buy_ticker)
+                if buy_signal_caption:
+                    st.caption(buy_signal_caption)
                 buy_amount = st.number_input(
                     "Amount to invest", min_value=0.0, step=100.0,
                     value=float(min(1000.0, portfolio["cash"])), key="pt_buy_amount",
@@ -479,6 +520,7 @@ def main():
                     ok, msg = pt.buy(portfolio, buy_ticker, buy_price, float(buy_amount))
                     (st.success if ok else st.error)(msg)
                     if ok:
+                        pt.record_equity_snapshot(portfolio, price_lookup)
                         st.rerun()
 
             with sell_col:
@@ -493,14 +535,18 @@ def main():
                         f"Last price: {sell_price:,.2f} · Held: {shares_held:.4f} shares"
                         if sell_price else f"Held: {shares_held:.4f} shares (no live price)"
                     )
+                    sell_signal_caption = _ticker_signal_caption(sell_ticker)
+                    if sell_signal_caption:
+                        st.caption(sell_signal_caption)
                     sell_shares = st.number_input(
-                        "Shares to sell", min_value=0.0, max_value=float(shares_held),
-                        value=float(shares_held), key="pt_sell_shares",
+                        "Shares to sell (defaults to your full position)", min_value=0.0,
+                        max_value=float(shares_held), value=float(shares_held), key="pt_sell_shares",
                     )
                     if st.button("🔴 Sell", key="pt_sell_button", use_container_width=True):
                         ok, msg = pt.sell(portfolio, sell_ticker, sell_price, float(sell_shares))
                         (st.success if ok else st.error)(msg)
                         if ok:
+                            pt.record_equity_snapshot(portfolio, price_lookup)
                             st.rerun()
 
         if not pt_summary["holdings_df"].empty:
@@ -509,8 +555,13 @@ def main():
 
         if portfolio["trades"]:
             st.write("**Trade Log**")
-            st.dataframe(
-                pd.DataFrame(portfolio["trades"]).iloc[::-1], use_container_width=True, hide_index=True,
+            trades_log_df = pd.DataFrame(portfolio["trades"]).iloc[::-1]
+            st.dataframe(trades_log_df, use_container_width=True, hide_index=True)
+            st.download_button(
+                "⬇️ Download trade log (CSV)",
+                data=trades_log_df.to_csv(index=False),
+                file_name="paper_trading_log.csv",
+                mime="text/csv",
             )
 
 

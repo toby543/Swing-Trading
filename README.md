@@ -25,8 +25,10 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
     signal fires while flat, exiting after a Sell/Strong Sell signal fires while holding. Shows the
     resulting trade log, entry/exit markers on the price chart, and an equity curve.
   - *Manual Paper Trading*: click Buy/Sell yourself on any ticker against a simulated cash balance,
-    at its latest price, with weighted-average cost basis, an open-positions table, and a trade
-    log. Persisted to `data/paper_portfolio.json`.
+    at its latest price, with weighted-average cost basis. Shows the current Buy/Sell signal next
+    to each ticker as a decision aid, an equity curve across your trades, realized P&L/win-rate
+    stats, an open-positions table, a trade log with CSV export, and a confirm-before-erasing
+    portfolio reset. Persisted to `data/paper_portfolio.json`.
 
 ## Setup
 
