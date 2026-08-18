@@ -21,9 +21,11 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
   volatility / Sharpe / max drawdown stats.
 - **Trade Simulator** — manual paper trading: click Buy/Sell yourself on any ticker against a
   simulated cash balance, at its latest price, buying either by dollar amount or by exact share
-  quantity, with weighted-average cost basis. Shows the current Buy/Sell signal next to each
-  ticker as a decision aid, an equity curve across your trades, realized P&L/win-rate stats, an
-  open-positions table, a trade log with CSV export, and a confirm-before-erasing portfolio reset.
+  quantity, with weighted-average cost basis. Portfolio summary shows Cash, **Total Buy Value**
+  (cost basis of everything currently held), Holdings Value (current market value), Total Equity,
+  and Total Return, plus realized P&L/win-rate stats. Shows the current Buy/Sell signal next to
+  each ticker as a decision aid, an open-positions table (with per-position Buy Value alongside
+  Market Value), a trade log with CSV export, and a confirm-before-erasing portfolio reset.
   Persisted to `data/paper_portfolio.json`.
 
 ## Setup

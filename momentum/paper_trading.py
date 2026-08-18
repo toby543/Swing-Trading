@@ -145,12 +145,17 @@ def realized_pl_stats(portfolio: dict) -> dict:
 def summary(portfolio: dict, price_lookup: dict) -> dict:
     """
     price_lookup: {ticker: last_price}. Returns cash/holdings/equity totals plus
-    a holdings DataFrame (Ticker, Shares, Avg Cost, Last Price, Market Value, Unrealized P&L, P&L %).
+    a holdings DataFrame (Ticker, Shares, Avg Cost, Buy Value, Last Price, Market
+    Value, Unrealized P&L, P&L %). "Buy Value" is the cost basis (what you paid);
+    "Market Value" is what it's worth now at the last available price.
     """
     rows = []
     holdings_value = 0.0
+    total_buy_value = 0.0
     for ticker, pos in portfolio["positions"].items():
         last_price = price_lookup.get(ticker)
+        buy_value = pos["shares"] * pos["avg_price"]
+        total_buy_value += buy_value
         market_value = pos["shares"] * last_price if last_price else np.nan
         if pd.notna(market_value):
             holdings_value += market_value
@@ -160,6 +165,7 @@ def summary(portfolio: dict, price_lookup: dict) -> dict:
             "Ticker": ticker,
             "Shares": round(pos["shares"], 4),
             "Avg Cost": round(pos["avg_price"], 2),
+            "Buy Value": round(buy_value, 2),
             "Last Price": round(last_price, 2) if last_price else np.nan,
             "Market Value": round(market_value, 2) if pd.notna(market_value) else np.nan,
             "Unrealized P&L": round(unrealized_pl, 2) if pd.notna(unrealized_pl) else np.nan,
@@ -167,7 +173,7 @@ def summary(portfolio: dict, price_lookup: dict) -> dict:
         })
 
     holdings_df = pd.DataFrame(rows, columns=[
-        "Ticker", "Shares", "Avg Cost", "Last Price", "Market Value", "Unrealized P&L", "P&L %",
+        "Ticker", "Shares", "Avg Cost", "Buy Value", "Last Price", "Market Value", "Unrealized P&L", "P&L %",
     ])
 
     total_equity = portfolio["cash"] + holdings_value
@@ -176,6 +182,7 @@ def summary(portfolio: dict, price_lookup: dict) -> dict:
     return {
         "cash": portfolio["cash"],
         "holdings_value": holdings_value,
+        "total_buy_value": total_buy_value,
         "total_equity": total_equity,
         "total_return_pct": (total_equity / starting_capital - 1) * 100 if starting_capital else np.nan,
         "holdings_df": holdings_df,

@@ -372,18 +372,19 @@ def main():
         pt_summary = pt.summary(portfolio, price_lookup)
         pl_stats = pt.realized_pl_stats(portfolio)
 
-        pm1, pm2, pm3, pm4 = st.columns(4)
+        pm1, pm2, pm3, pm4, pm5 = st.columns(5)
         pm1.metric("Cash", f"{pt_summary['cash']:,.2f}")
-        pm2.metric("Holdings Value", f"{pt_summary['holdings_value']:,.2f}")
-        pm3.metric("Total Equity", f"{pt_summary['total_equity']:,.2f}")
-        pm4.metric(
+        pm2.metric("Total Buy Value", f"{pt_summary['total_buy_value']:,.2f}")
+        pm3.metric("Holdings Value", f"{pt_summary['holdings_value']:,.2f}")
+        pm4.metric("Total Equity", f"{pt_summary['total_equity']:,.2f}")
+        pm5.metric(
             "Total Return",
             f"{pt_summary['total_return_pct']:.2f}%" if pd.notna(pt_summary["total_return_pct"]) else "—",
         )
-        pm5, pm6, pm7 = st.columns(3)
-        pm5.metric("Realized P&L", f"{pl_stats['total_realized_pl']:+,.2f}")
-        pm6.metric("Closed Trades", pl_stats["num_closed"])
-        pm7.metric("Win Rate", f"{pl_stats['win_rate_pct']}%" if pd.notna(pl_stats["win_rate_pct"]) else "—")
+        pm6, pm7, pm8 = st.columns(3)
+        pm6.metric("Realized P&L", f"{pl_stats['total_realized_pl']:+,.2f}")
+        pm7.metric("Closed Trades", pl_stats["num_closed"])
+        pm8.metric("Win Rate", f"{pl_stats['win_rate_pct']}%" if pd.notna(pl_stats["win_rate_pct"]) else "—")
 
         equity_history = portfolio["equity_history"]
         if len(equity_history) >= 2:
