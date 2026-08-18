@@ -23,6 +23,18 @@ def _uploaded_cache_path(index_name: str) -> str:
     safe_name = index_name.lower().replace(" ", "_")
     return os.path.join(_DATA_DIR, f"uploaded_{safe_name}.json")
 
+
+# Committed-to-the-repo snapshot, used as the baseline default. Unlike the
+# uploaded cache (data/uploaded_*.json, gitignored — wiped by every redeploy
+# since Streamlit Cloud resets the filesystem on each git push) this ships
+# with the code itself, so it's always available without any user action.
+# It goes stale as NSE rebalances the index; see BUNDLED_FALLBACK_DATE.
+BUNDLED_FALLBACK_DATE = "2026-08-18"
+_BUNDLED_FALLBACK_PATHS = {
+    "Nifty 200": os.path.join(_DATA_DIR, "nifty200_fallback.csv"),
+    "Nifty 500": os.path.join(_DATA_DIR, "nifty500_fallback.csv"),
+}
+
 # NSE has served these archive CSVs from more than one hostname over time;
 # try each in order and fall through on failure.
 NSE_INDEX_CSV_URLS = {
@@ -90,6 +102,18 @@ def load_uploaded_constituents(index_name: str) -> list:
             return json.load(f)
     except (json.JSONDecodeError, OSError):
         return []
+
+
+def load_bundled_fallback(index_name: str) -> list:
+    """Load the constituent list committed to the repo (data/*_fallback.csv), if present."""
+    path = _BUNDLED_FALLBACK_PATHS.get(index_name)
+    if not path or not os.path.exists(path):
+        return []
+    try:
+        table = pd.read_csv(path)
+    except Exception:
+        return []
+    return _symbols_from_table(table)
 
 
 @st.cache_data(ttl=86400, show_spinner=False)

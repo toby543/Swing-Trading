@@ -124,13 +124,14 @@ def main():
             raw = st.text_area("Tickers (comma or newline separated)", value=", ".join(data.DEFAULT_UNIVERSE))
             universe = _parse_tickers(raw)
         elif is_nse_universe:
-            # Check the on-disk uploaded cache BEFORE showing anything about
-            # the live fetch. NSE reliably 403s Streamlit Cloud on every load
-            # (an IP-level block, not transient), so if we tried the live
-            # fetch first every time we'd show a scary red error on every
-            # single page load even after the user has already successfully
-            # uploaded a working list — which is exactly what was happening.
+            # Priority: live NSE fetch (freshest) -> a list the user uploaded
+            # this app instance's lifetime (data/uploaded_*.json — wiped by
+            # every redeploy, since Streamlit Cloud resets the filesystem on
+            # each push) -> the snapshot committed into the repo itself
+            # (data/*_fallback.csv — always available, but goes stale between
+            # updates) -> only if ALL THREE fail, the full error + upload ask.
             uploaded_cached = nse_indices.load_uploaded_constituents(universe_source)
+            bundled_fallback = nse_indices.load_bundled_fallback(universe_source)
 
             with st.spinner(f"Fetching current {universe_source} constituents from NSE..."):
                 universe, fetch_error = nse_indices.fetch_nifty_constituents(universe_source)
@@ -140,33 +141,23 @@ def main():
             elif uploaded_cached:
                 universe = uploaded_cached
                 st.caption(
-                    f"NSE's live feed is blocked from this server, but {len(universe)} previously "
-                    f"uploaded {universe_source} tickers are being used instead."
+                    f"NSE's live feed is blocked from this server; using {len(universe)} previously "
+                    f"uploaded {universe_source} tickers."
                 )
-                with st.expander("Re-upload a fresh list / live fetch details"):
-                    st.caption(f"Live fetch details: {fetch_error}")
-                    uploaded = st.file_uploader(
-                        f"Upload a fresh {universe_source} constituent CSV", type="csv",
-                        key=f"uploader::{universe_source}",
-                    )
-                    if uploaded is not None:
-                        parsed = nse_indices.parse_constituent_csv(uploaded)
-                        if parsed:
-                            nse_indices.save_uploaded_constituents(universe_source, parsed)
-                            universe = parsed
-                            st.success(f"Loaded {len(parsed)} tickers from the uploaded file — saved for future sessions.")
-                        else:
-                            st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
-                    if st.button(f"Clear uploaded {universe_source} list", key=f"clear_upload::{universe_source}"):
-                        nse_indices.save_uploaded_constituents(universe_source, [])
-                        st.rerun()
-            else:
-                st.error(f"Couldn't fetch the {universe_source} constituent list from NSE right now.")
-                st.caption(f"Details: {fetch_error}")
+            elif bundled_fallback:
+                universe = bundled_fallback
                 st.caption(
-                    "NSE often blocks requests from cloud servers (like the one this app runs on), "
-                    "even though it works fine from a regular browser. Workaround: open the CSV link "
-                    "below yourself, save it, then upload it here."
+                    f"NSE's live feed is blocked from this server; using the {len(universe)}-ticker "
+                    f"{universe_source} snapshot bundled with the app (as of {nse_indices.BUNDLED_FALLBACK_DATE})."
+                )
+            else:
+                st.error(f"Couldn't fetch the {universe_source} constituent list, and no fallback is available.")
+                st.caption(f"Details: {fetch_error}")
+
+            with st.expander("Upload a fresher list" if universe else "Upload a list (required — no fallback found)"):
+                st.caption(
+                    "NSE blocks requests from cloud servers (including this app's), but works fine "
+                    "from a regular browser. Download the CSV yourself and upload it here to refresh the list."
                 )
                 for url in nse_indices.NSE_INDEX_CSV_URLS.get(universe_source, []):
                     st.caption(f"→ {url}")
@@ -186,9 +177,15 @@ def main():
                     else:
                         st.error("Couldn't parse that file — expected an NSE index CSV with a 'Symbol' column.")
 
-                if not universe:
-                    universe = data.DEFAULT_UNIVERSE
-                    st.caption("Using the default watchlist universe until a valid list is provided.")
+                if uploaded_cached and st.button(
+                    f"Clear uploaded {universe_source} list", key=f"clear_upload::{universe_source}",
+                ):
+                    nse_indices.save_uploaded_constituents(universe_source, [])
+                    st.rerun()
+
+            if not universe:
+                universe = data.DEFAULT_UNIVERSE
+                st.caption("Using the default watchlist universe until a valid list is provided.")
         else:
             universe = data.DEFAULT_UNIVERSE
 

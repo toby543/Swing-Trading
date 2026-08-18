@@ -65,12 +65,22 @@ as a faster way to scan the screener table, not a substitute for looking at the 
 ## Note on the Nifty 200 / Nifty 500 universes
 
 Index constituents are fetched live from NSE on each cache refresh (once per day) rather than
-hardcoded, since NSE rebalances these indices periodically. If NSE's archive is unreachable or
-blocking the request (NSE commonly blocks cloud/datacenter IPs, including Streamlit Community
-Cloud's), the screener shows an upload box — download the CSV from NSE in your own browser and
-upload it there. The uploaded list is written to `data/uploaded_nifty_*.json` so it survives page
-refreshes and reconnects, same as the watchlist; it does not survive a full app redeploy on
-Streamlit Cloud, since that resets the filesystem.
+hardcoded, since NSE rebalances these indices periodically. NSE commonly blocks cloud/datacenter
+IPs (including Streamlit Community Cloud's) at the network level, so the live fetch is expected to
+fail most of the time when deployed. Three layers of fallback, in priority order:
+
+1. **Live fetch** from NSE — freshest, used whenever NSE doesn't block the request.
+2. **Uploaded list** (`data/uploaded_*.json`) — download the CSV from NSE in your own browser
+   (unaffected by the block) and upload it via the "Upload a fresher list" expander. Survives page
+   refreshes and reconnects, but is wiped on the next app redeploy (Streamlit Cloud resets the
+   filesystem on every push).
+3. **Bundled snapshot** (`data/nifty200_fallback.csv`, `data/nifty500_fallback.csv`) — committed
+   to the repo, as of `nse_indices.BUNDLED_FALLBACK_DATE`. Ships with the code, so it survives
+   every redeploy without any action needed; refresh it periodically by replacing those files
+   (and updating `BUNDLED_FALLBACK_DATE`) with a freshly downloaded CSV.
+
+Only if all three fail does the screener fall back to the default watchlist universe and show an
+error — it will not silently use a stale or partial list without telling you.
 
 ## Disclaimer
 
