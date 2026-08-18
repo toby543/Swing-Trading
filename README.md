@@ -29,6 +29,9 @@ A Streamlit app for finding, tracking, and backtesting momentum-based swing trad
     to each ticker as a decision aid, an equity curve across your trades, realized P&L/win-rate
     stats, an open-positions table, a trade log with CSV export, and a confirm-before-erasing
     portfolio reset. Persisted to `data/paper_portfolio.json`.
+- **Breakout ticker tape** — a scrolling banner at the top of the app showcasing a curated list of
+  stocks nearing their 52-week high (`data/breakout_watchlist.csv`, dated snapshot — see
+  `momentum/breakout_watchlist.py`), with price, % away from the high, and RSI. Hover to pause.
 
 ## Setup
 
